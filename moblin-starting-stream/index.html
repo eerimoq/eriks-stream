@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Moblin DVD Bounce</title>
+  <title>Moblin Starting Stream</title>
   <style>
     html, body {
       margin: 0;
@@ -58,11 +58,11 @@
 
     function preloadImages(sources, callback) {
       let loaded = 0;
-      for (const src of sources) {
-        const img = new Image();
-        img.src = src;
-        img.onload = () => {
-          loadedImages[src] = img;
+      for (const source of sources) {
+        const image = new Image();
+        image.src = source;
+        image.onload = () => {
+          loadedImages[source] = image;
           if (++loaded === sources.length) callback();
         };
       }
