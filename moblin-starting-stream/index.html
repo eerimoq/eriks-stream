@@ -29,7 +29,7 @@
     const PER_LOGO_BOUNCE_FRAMES     = 30;     // frames before a logo can spawn again
     const INVINCIBLE_MIN_LOGOS       = 20;     // min logos required for invincible chance
     const MAX_INVINCIBLE_COUNT       = 2;      // max simultaneous invincible logos
-    const INVINCIBLE_DURATION        = 10000;  // ms invincible lasts
+    const INVINCIBLE_DURATION        = 30000;  // ms invincible lasts
     const SPAWN_OFFSET               = 10;     // px from wall when spawning
     const TEXT_BOX_WIDTH             = 810;    // px
     const TEXT_BOX_HEIGHT            = 105;    // px
@@ -42,8 +42,7 @@
 
     const baseLogoSrc = "moblin-logo.svg";
     const variantSources = [
-      "logo-basque.svg",
-      "logo-eyebrows.svg",
+      "logo-millionaire.svg",
       "logo-goblin.svg",
       "logo-goblina.svg",
       "logo-heart.svg",
@@ -184,7 +183,7 @@
       const W = CANVAS_WIDTH, H = CANVAS_HEIGHT;
       ctx.clearRect(0, 0, W, H);
       const newLogos = [];
-      var drawCount = 0;
+
       for (let i = logos.length - 1; i >= 0; i--) {
         const logo = logos[i];
         const result = logo.move(timestamp);
@@ -247,7 +246,6 @@
           ctx.filter = 'none';
         }
         logo.draw();
-        drawCount += 1;
         ctx.filter = 'none';
 
         // ——— LOGO–LOGO COLLISIONS & INVINCIBLE KILLS ———
