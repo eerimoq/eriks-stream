@@ -338,15 +338,17 @@ function animate(timestamp) {
       // compute spawn angle & pos
       let angle;
       if (wallBounce.x === 1) {
-        angle =
-          logo.box.x < canvasBox.width / 2
-            ? Math.random() * (Math.PI - 0.4) + 0.2
-            : Math.random() * (Math.PI - 0.4) + 0.2 + Math.PI;
+        if (logo.box.centerX() < canvasBox.centerX()) {
+          angle = Math.random() * (Math.PI - 0.4) + 0.2;
+        } else {
+          angle = Math.random() * (Math.PI - 0.4) + 0.2 + Math.PI;
+        }
       } else {
-        angle =
-          logo.box.y < canvasBox.height / 2
-            ? Math.random() * (Math.PI - 0.4) + 0.2 + Math.PI / 2
-            : Math.random() * (Math.PI - 0.4) + 0.2 - Math.PI / 2;
+        if (logo.box.centerY() < canvasBox.centerY()) {
+          angle = Math.random() * (Math.PI - 0.4) + 0.2 + Math.PI / 2;
+        } else {
+          angle = Math.random() * (Math.PI - 0.4) + 0.2 - Math.PI / 2;
+        }
       }
       const dx = Math.cos(angle) * SPEED;
       const dy = Math.sin(angle) * SPEED;
