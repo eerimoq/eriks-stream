@@ -15,6 +15,48 @@ const TEXT_BOX_WIDTH = 810; // px
 const TEXT_BOX_HEIGHT = 105; // px
 // ==== END CONFIGURATION ====
 
+class Box {
+  constructor(x, y, width, height) {
+    this.x = x;
+    this.y = y;
+    this.width = width;
+    this.height = height;
+  }
+
+  left() {
+    return this.x;
+  }
+
+  right() {
+    return this.x + this.width;
+  }
+
+  top() {
+    return this.y;
+  }
+
+  bottom() {
+    return this.y + this.height;
+  }
+
+  centerX() {
+    return this.x + this.width / 2;
+  }
+
+  centerY() {
+    return this.y + this.height / 2;
+  }
+
+  intersects(other) {
+    return (
+      this.left() < other.right() &&
+      this.right() > other.left() &&
+      this.top() < other.bottom() &&
+      this.bottom() > other.top()
+    );
+  }
+}
+
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 canvas.width = CANVAS_WIDTH;
@@ -35,6 +77,13 @@ const variantSources = [
 const allSources = [baseLogoSrc, ...variantSources];
 const loadedImages = {};
 const logos = [];
+const canvasBox = new Box(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+const textBox = new Box(
+  (CANVAS_WIDTH - TEXT_BOX_WIDTH) / 2,
+  (CANVAS_HEIGHT - TEXT_BOX_HEIGHT) / 2,
+  TEXT_BOX_WIDTH,
+  TEXT_BOX_HEIGHT
+);
 
 function preloadImages(sources, callback) {
   let loaded = 0;
@@ -48,7 +97,7 @@ function preloadImages(sources, callback) {
   }
 }
 
-function getRandomVariant() {
+function getRandomImage() {
   return loadedImages[
     variantSources[Math.floor(Math.random() * variantSources.length)]
   ];
@@ -58,14 +107,12 @@ class Logo {
   lastWallBounceTime = 0;
 
   constructor(x, y, dx, dy, image) {
-    this.x = x;
-    this.y = y;
+    this.box = new Box(x, y, LOGO_SIZE, LOGO_SIZE);
     this.dx = dx;
     this.dy = dy;
     this.prevDx = dx;
     this.prevDy = dy;
     this.image = image;
-    this.size = LOGO_SIZE;
     this.bounceCooldown = 0;
     this.lastSpawnTime = 0;
     this.spawnTime = performance.now();
@@ -74,9 +121,19 @@ class Logo {
     this.invincibleStart = 0;
   }
 
+  reset() {
+    this.box.x = Math.random() * (canvasBox.width - LOGO_SIZE);
+    this.box.y = Math.random() * (canvasBox.height - LOGO_SIZE);
+    const a = Math.random() * 2 * Math.PI;
+    this.dx = Math.cos(a) * SPEED;
+    this.dy = Math.sin(a) * SPEED;
+    this.directionFlips = [];
+    this.spawnTime = performance.now();
+  }
+
   move(currentTime) {
-    this.x += this.dx;
-    this.y += this.dy;
+    this.box.x += this.dx;
+    this.box.y += this.dy;
 
     // track rapid flips
     const now = currentTime;
@@ -89,40 +146,37 @@ class Logo {
       this.prevDy = this.dy;
     }
     this.directionFlips = this.directionFlips.filter((t) => now - t < 1000);
-    if (this.directionFlips.length >= 8) return "glitched";
+    if (this.directionFlips.length >= 8) {
+      this.reset();
+      return null;
+    }
     if (this.bounceCooldown > 0) this.bounceCooldown--;
 
     let bounced = false;
-    let wallNormal = null;
+    let wallBounce = null;
 
-    // left wall
-    if (this.x <= 0) {
-      this.x = 1;
+    if (this.box.left() <= canvasBox.left()) {
+      this.box.x = canvasBox.left() + 1;
       this.dx *= -1;
       bounced = true;
-      wallNormal = { x: 1, y: 0 };
-    }
-    // right wall
-    else if (this.x + this.size >= CANVAS_WIDTH) {
-      this.x = CANVAS_WIDTH - this.size - 1;
+      wallBounce = { x: 1, y: 0 };
+    } else if (this.box.right() >= canvasBox.right()) {
+      this.box.x = canvasBox.right() - this.box.width - 1;
       this.dx *= -1;
       bounced = true;
-      wallNormal = { x: 1, y: 0 };
+      wallBounce = { x: 1, y: 0 };
     }
 
-    // top wall
-    if (this.y <= 0) {
-      this.y = 1;
+    if (this.box.top() <= canvasBox.top()) {
+      this.box.y = canvasBox.top() + 1;
       this.dy *= -1;
       bounced = true;
-      wallNormal = { x: 0, y: 1 };
-    }
-    // bottom wall
-    else if (this.y + this.size >= CANVAS_HEIGHT) {
-      this.y = CANVAS_HEIGHT - this.size - 1;
+      wallBounce = { x: 0, y: 1 };
+    } else if (this.box.bottom() >= canvasBox.bottom()) {
+      this.box.y = canvasBox.bottom() - this.box.height - 1;
       this.dy *= -1;
       bounced = true;
-      wallNormal = { x: 0, y: 1 };
+      wallBounce = { x: 0, y: 1 };
     }
 
     // spawn on bounce if cooldowns allow
@@ -135,18 +189,16 @@ class Logo {
       this.bounceCooldown = PER_LOGO_BOUNCE_FRAMES;
       this.lastWallBounceTime = now;
       this.lastSpawnTime = now;
-      return wallNormal;
+      return wallBounce;
     }
+
     return null;
   }
 
   draw() {
     const angle = Math.atan2(this.dy, this.dx);
     ctx.save();
-    ctx.translate(
-      this.x + this.image.width / 2,
-      this.y + this.image.height / 2
-    );
+    ctx.translate(this.box.centerX(), this.box.centerY());
     ctx.rotate(angle);
     ctx.drawImage(
       this.image,
@@ -162,8 +214,8 @@ class Logo {
 preloadImages(allSources, () => {
   logos.push(
     new Logo(
-      CANVAS_WIDTH / 4,
-      CANVAS_HEIGHT / 3,
+      canvasBox.width / 4,
+      canvasBox.height / 3,
       SPEED,
       SPEED * 0.7,
       loadedImages[baseLogoSrc]
@@ -175,63 +227,39 @@ preloadImages(allSources, () => {
 let globalLastSpawnTime = 0;
 
 function animate(timestamp) {
-  ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  ctx.clearRect(0, 0, canvasBox.width, canvasBox.height);
   const newLogos = [];
 
   for (let i = logos.length - 1; i >= 0; i--) {
     const logo = logos[i];
-    const result = logo.move(timestamp);
-
-    // reset glitched logos
-    if (result === "glitched") {
-      logo.x = Math.random() * (CANVAS_WIDTH - LOGO_SIZE);
-      logo.y = Math.random() * (CANVAS_HEIGHT - LOGO_SIZE);
-      const a = Math.random() * 2 * Math.PI;
-      logo.dx = Math.cos(a) * SPEED;
-      logo.dy = Math.sin(a) * SPEED;
-      logo.directionFlips = [];
-      logo.spawnTime = performance.now();
-      continue;
-    }
+    const wallBounce = logo.move(timestamp);
 
     // ——— TEXT COLLISION FOR NORMAL LOGOS ———
     if (!logo.isInvincible) {
-      const textX = (CANVAS_WIDTH - TEXT_BOX_WIDTH) / 2;
-      const textY = (CANVAS_HEIGHT - TEXT_BOX_HEIGHT) / 2;
-      if (
-        logo.x < textX + TEXT_BOX_WIDTH &&
-        logo.x + logo.size > textX &&
-        logo.y < textY + TEXT_BOX_HEIGHT &&
-        logo.y + logo.size > textY
-      ) {
+      if (textBox.intersects(logo.box)) {
         // determine collision side
-        const centerX = logo.x + logo.size / 2;
-        const centerY = logo.y + logo.size / 2;
-        const overlapX = Math.min(
-          centerX - textX,
-          textX + TEXT_BOX_WIDTH - centerX
-        );
-        const overlapY = Math.min(
-          centerY - textY,
-          textY + TEXT_BOX_HEIGHT - centerY
-        );
+        const overlapTextLeft = logo.box.right() - textBox.left();
+        const overlapTextRight = textBox.right() - logo.box.left();
+        const overlapTextTop = logo.box.bottom() - textBox.top();
+        const overlapTextBottom = textBox.bottom() - logo.box.top();
 
-        if (overlapX < overlapY) {
-          // horizontal side
-          if (centerX < textX + TEXT_BOX_WIDTH / 2) {
-            logo.x = textX - logo.size - 1;
+        const minOverlapX = Math.min(overlapTextLeft, overlapTextRight);
+        const minOverlapY = Math.min(overlapTextTop, overlapTextBottom);
+
+        if (minOverlapX < minOverlapY) {
+          if (overlapTextLeft < overlapTextRight) {
+            logo.box.x = textBox.left() - logo.box.width - 1;
             logo.dx = -Math.abs(logo.dx);
           } else {
-            logo.x = textX + TEXT_BOX_WIDTH + 1;
+            logo.box.x = textBox.right() + 1;
             logo.dx = Math.abs(logo.dx);
           }
         } else {
-          // vertical side
-          if (centerY < textY + TEXT_BOX_HEIGHT / 2) {
-            logo.y = textY - logo.size - 1;
+          if (overlapTextTop < overlapTextBottom) {
+            logo.box.y = textBox.top() - logo.box.height - 1;
             logo.dy = -Math.abs(logo.dy);
           } else {
-            logo.y = textY + TEXT_BOX_HEIGHT + 1;
+            logo.box.y = textBox.bottom() + 1;
             logo.dy = Math.abs(logo.dy);
           }
         }
@@ -254,10 +282,10 @@ function animate(timestamp) {
       if (timestamp - logo.spawnTime < 500 || timestamp - other.spawnTime < 500)
         continue;
 
-      const dx = other.x - logo.x;
-      const dy = other.y - logo.y;
+      const dx = other.box.x - logo.box.x;
+      const dy = other.box.y - logo.box.y;
       const dist = Math.hypot(dx, dy);
-      const minDist = (logo.size + other.size) / 2;
+      const minDist = (logo.box.width + other.box.width) / 2;
 
       // invincible destroys
       if (
@@ -275,10 +303,10 @@ function animate(timestamp) {
         const overlap = minDist - dist;
         const nx = dx / dist;
         const ny = dy / dist;
-        logo.x -= (nx * overlap) / 2;
-        logo.y -= (ny * overlap) / 2;
-        other.x += (nx * overlap) / 2;
-        other.y += (ny * overlap) / 2;
+        logo.box.x -= (nx * overlap) / 2;
+        logo.box.y -= (ny * overlap) / 2;
+        other.box.x += (nx * overlap) / 2;
+        other.box.y += (ny * overlap) / 2;
         const dot = logo.dx * nx + logo.dy * ny;
         logo.dx -= 2 * dot * nx;
         logo.dy -= 2 * dot * ny;
@@ -287,7 +315,7 @@ function animate(timestamp) {
 
     // ——— SPAWN NEW ON WALL BOUNCE ———
     if (
-      result &&
+      wallBounce &&
       logos.length + newLogos.length < MAX_LOGOS &&
       timestamp - globalLastSpawnTime >= GLOBAL_COOLDOWN_MS
     ) {
@@ -309,27 +337,26 @@ function animate(timestamp) {
 
       // compute spawn angle & pos
       let angle;
-      if (result.x === 1) {
+      if (wallBounce.x === 1) {
         angle =
-          logo.x < CANVAS_WIDTH / 2
+          logo.box.x < canvasBox.width / 2
             ? Math.random() * (Math.PI - 0.4) + 0.2
             : Math.random() * (Math.PI - 0.4) + 0.2 + Math.PI;
       } else {
         angle =
-          logo.y < CANVAS_HEIGHT / 2
+          logo.box.y < canvasBox.height / 2
             ? Math.random() * (Math.PI - 0.4) + 0.2 + Math.PI / 2
             : Math.random() * (Math.PI - 0.4) + 0.2 - Math.PI / 2;
       }
       const dx = Math.cos(angle) * SPEED;
       const dy = Math.sin(angle) * SPEED;
-      const img = getRandomVariant();
 
-      let sx = logo.x + dx * SPAWN_OFFSET - LOGO_SIZE / 2;
-      let sy = logo.y + dy * SPAWN_OFFSET - LOGO_SIZE / 2;
-      sx = Math.max(0, Math.min(CANVAS_WIDTH - LOGO_SIZE, sx));
-      sy = Math.max(0, Math.min(CANVAS_HEIGHT - LOGO_SIZE, sy));
+      let x = logo.box.x + dx * SPAWN_OFFSET - LOGO_SIZE / 2;
+      let y = logo.box.y + dy * SPAWN_OFFSET - LOGO_SIZE / 2;
+      x = Math.max(0, Math.min(canvasBox.width - LOGO_SIZE, x));
+      y = Math.max(0, Math.min(canvasBox.height - LOGO_SIZE, y));
 
-      newLogos.push(new Logo(sx, sy, dx, dy, img));
+      newLogos.push(new Logo(x, y, dx, dy, getRandomImage()));
     }
   }
 
