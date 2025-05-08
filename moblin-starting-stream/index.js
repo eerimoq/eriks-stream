@@ -173,10 +173,9 @@ preloadImages(allSources, () => {
 });
 
 let globalLastSpawnTime = 0;
+
 function animate(timestamp) {
-  const W = CANVAS_WIDTH,
-    H = CANVAS_HEIGHT;
-  ctx.clearRect(0, 0, W, H);
+  ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   const newLogos = [];
 
   for (let i = logos.length - 1; i >= 0; i--) {
@@ -185,8 +184,8 @@ function animate(timestamp) {
 
     // reset glitched logos
     if (result === "glitched") {
-      logo.x = Math.random() * (W - LOGO_SIZE);
-      logo.y = Math.random() * (H - LOGO_SIZE);
+      logo.x = Math.random() * (CANVAS_WIDTH - LOGO_SIZE);
+      logo.y = Math.random() * (CANVAS_HEIGHT - LOGO_SIZE);
       const a = Math.random() * 2 * Math.PI;
       logo.dx = Math.cos(a) * SPEED;
       logo.dy = Math.sin(a) * SPEED;
@@ -197,8 +196,8 @@ function animate(timestamp) {
 
     // ——— TEXT COLLISION FOR NORMAL LOGOS ———
     if (!logo.isInvincible) {
-      const textX = (W - TEXT_BOX_WIDTH) / 2;
-      const textY = (H - TEXT_BOX_HEIGHT) / 2;
+      const textX = (CANVAS_WIDTH - TEXT_BOX_WIDTH) / 2;
+      const textY = (CANVAS_HEIGHT - TEXT_BOX_HEIGHT) / 2;
       if (
         logo.x < textX + TEXT_BOX_WIDTH &&
         logo.x + logo.size > textX &&
@@ -311,12 +310,12 @@ function animate(timestamp) {
       let angle;
       if (result.x === 1) {
         angle =
-          logo.x < W / 2
+          logo.x < CANVAS_WIDTH / 2
             ? Math.random() * (Math.PI - 0.4) + 0.2
             : Math.random() * (Math.PI - 0.4) + 0.2 + Math.PI;
       } else {
         angle =
-          logo.y < H / 2
+          logo.y < CANVAS_HEIGHT / 2
             ? Math.random() * (Math.PI - 0.4) + 0.2 + Math.PI / 2
             : Math.random() * (Math.PI - 0.4) + 0.2 - Math.PI / 2;
       }
@@ -326,8 +325,8 @@ function animate(timestamp) {
 
       let sx = logo.x + dx * SPAWN_OFFSET - LOGO_SIZE / 2;
       let sy = logo.y + dy * SPAWN_OFFSET - LOGO_SIZE / 2;
-      sx = Math.max(0, Math.min(W - LOGO_SIZE, sx));
-      sy = Math.max(0, Math.min(H - LOGO_SIZE, sy));
+      sx = Math.max(0, Math.min(CANVAS_WIDTH - LOGO_SIZE, sx));
+      sy = Math.max(0, Math.min(CANVAS_HEIGHT - LOGO_SIZE, sy));
 
       newLogos.push(new Logo(sx, sy, dx, dy, img));
     }
