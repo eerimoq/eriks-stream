@@ -254,8 +254,8 @@ function animate(timestamp) {
       if (timestamp - logo.spawnTime < 500 || timestamp - other.spawnTime < 500)
         continue;
 
-      const dx = other.x - logo.x,
-        dy = other.y - logo.y;
+      const dx = other.x - logo.x;
+      const dy = other.y - logo.y;
       const dist = Math.hypot(dx, dy);
       const minDist = (logo.size + other.size) / 2;
 
@@ -269,11 +269,12 @@ function animate(timestamp) {
         logos.splice(logos.indexOf(other), 1);
         continue;
       }
+
       // normal bounce
       if (dist < minDist && dist > 0) {
         const overlap = minDist - dist;
-        const nx = dx / dist,
-          ny = dy / dist;
+        const nx = dx / dist;
+        const ny = dy / dist;
         logo.x -= (nx * overlap) / 2;
         logo.y -= (ny * overlap) / 2;
         other.x += (nx * overlap) / 2;
