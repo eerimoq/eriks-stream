@@ -115,9 +115,8 @@ function preloadImages(names, callback) {
 }
 
 function getRandomImages() {
-  return loadedImages[
-    allLogoNames[Math.floor(Math.random() * allLogoNames.length)]
-  ];
+  const nameIndex = Math.floor(Math.random() * allLogoNames.length);
+  return loadedImages[allLogoNames[nameIndex]];
 }
 
 class Logo {
