@@ -102,10 +102,10 @@ function preloadImages(names, callback) {
   let loaded = 0;
   for (const name of names) {
     const image = new Image();
-    image.src = `${name}.svg`;
+    image.src = `logos/${name}.svg`;
     image.onload = () => {
       const invincibleImage = new Image();
-      invincibleImage.src = `${name}-invincible.svg`;
+      invincibleImage.src = `logos/${name}-invincible.svg`;
       invincibleImage.onload = () => {
         loadedImages[name] = { normal: image, invincible: invincibleImage };
         if (++loaded === names.length) callback();
