@@ -1,19 +1,32 @@
-// ==== CONFIGURATION ====
 const CANVAS_WIDTH = 1920; // px
 const CANVAS_HEIGHT = 1080; // px
 const LOGO_SIZE = 100; // px
 const SPEED = 1; // px/frame
-const GLOBAL_COOLDOWN_MS = 800; // ms between spawns
-const MAX_LOGOS = 30; // max logos on screen
+const SPAWN_COOLDOWN_MS = 2000; // ms between spawns
+const MAX_LOGOS = 20; // max logos on screen
 const WALL_BOUNCE_COOLDOWN_MS = 100; // ms between a logo's wall bounces
-const PER_LOGO_BOUNCE_FRAMES = 30; // frames before a logo can spawn again
-const INVINCIBLE_MIN_LOGOS = 20; // min logos required for invincible chance
-const MAX_INVINCIBLE_COUNT = 2; // max simultaneous invincible logos
-const INVINCIBLE_DURATION = 30000; // ms invincible lasts
+const INVINCIBLE_DURATION = 20000; // ms invincible lasts
 const SPAWN_OFFSET = 10; // px from wall when spawning
 const TEXT_BOX_WIDTH = 810; // px
 const TEXT_BOX_HEIGHT = 105; // px
-// ==== END CONFIGURATION ====
+
+class Velocity {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+  }
+
+  isSameDirection(other) {
+    return (
+      Math.sign(this.x) === Math.sign(other.x) &&
+      Math.sign(this.y) === Math.sign(other.y)
+    );
+  }
+
+  clone() {
+    return new Velocity(this.x, this.y);
+  }
+}
 
 class Box {
   constructor(x, y, width, height) {
@@ -62,19 +75,19 @@ const ctx = canvas.getContext("2d");
 canvas.width = CANVAS_WIDTH;
 canvas.height = CANVAS_HEIGHT;
 
-const baseLogoSrc = "moblin-logo.svg";
-const variantSources = [
-  "logo-millionaire.svg",
-  "logo-goblin.svg",
-  "logo-goblina.svg",
-  "logo-heart.svg",
-  "logo-king.svg",
-  "logo-looking.svg",
-  "logo-party.svg",
-  "logo-queen.svg",
+const baseLogoName = "moblin-logo";
+const variantLogoNames = [
+  "logo-millionaire",
+  "logo-goblin",
+  "logo-goblina",
+  "logo-heart",
+  "logo-king",
+  "logo-looking",
+  "logo-party",
+  "logo-queen",
 ];
 
-const allSources = [baseLogoSrc, ...variantSources];
+const allLogoNames = [baseLogoName, ...variantLogoNames];
 const loadedImages = {};
 const logos = [];
 const canvasBox = new Box(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -85,36 +98,34 @@ const textBox = new Box(
   TEXT_BOX_HEIGHT
 );
 
-function preloadImages(sources, callback) {
+function preloadImages(names, callback) {
   let loaded = 0;
-  for (const source of sources) {
+  for (const name of names) {
     const image = new Image();
-    image.src = source;
+    image.src = `${name}.svg`;
     image.onload = () => {
-      loadedImages[source] = image;
-      if (++loaded === sources.length) callback();
+      const invincibleImage = new Image();
+      invincibleImage.src = `${name}-invincible.svg`;
+      invincibleImage.onload = () => {
+        loadedImages[name] = { normal: image, invincible: invincibleImage };
+        if (++loaded === names.length) callback();
+      };
     };
   }
 }
 
-function getRandomImage() {
+function getRandomImages() {
   return loadedImages[
-    variantSources[Math.floor(Math.random() * variantSources.length)]
+    allLogoNames[Math.floor(Math.random() * allLogoNames.length)]
   ];
 }
 
 class Logo {
-  lastWallBounceTime = 0;
-
-  constructor(x, y, dx, dy, image) {
+  constructor(x, y, dx, dy, images) {
     this.box = new Box(x, y, LOGO_SIZE, LOGO_SIZE);
-    this.dx = dx;
-    this.dy = dy;
-    this.prevDx = dx;
-    this.prevDy = dy;
-    this.image = image;
-    this.bounceCooldown = 0;
-    this.lastSpawnTime = 0;
+    this.velocity = new Velocity(dx, dy);
+    this.prevVelocity = new Velocity(dx, dy);
+    this.images = images;
     this.spawnTime = performance.now();
     this.directionFlips = [];
     this.isInvincible = false;
@@ -124,107 +135,88 @@ class Logo {
   reset() {
     this.box.x = Math.random() * (canvasBox.width - LOGO_SIZE);
     this.box.y = Math.random() * (canvasBox.height - LOGO_SIZE);
-    const a = Math.random() * 2 * Math.PI;
-    this.dx = Math.cos(a) * SPEED;
-    this.dy = Math.sin(a) * SPEED;
+    const angle = Math.random() * 2 * Math.PI;
+    this.velocity.x = Math.cos(angle) * SPEED;
+    this.velocity.y = Math.sin(angle) * SPEED;
     this.directionFlips = [];
     this.spawnTime = performance.now();
   }
 
   move(currentTime) {
-    this.box.x += this.dx;
-    this.box.y += this.dy;
+    this.box.x += this.velocity.x;
+    this.box.y += this.velocity.y;
 
     // track rapid flips
     const now = currentTime;
-    if (
-      Math.sign(this.dx) !== Math.sign(this.prevDx) ||
-      Math.sign(this.dy) !== Math.sign(this.prevDy)
-    ) {
+    if (!this.velocity.isSameDirection(this.prevVelocity)) {
       this.directionFlips.push(now);
-      this.prevDx = this.dx;
-      this.prevDy = this.dy;
+      this.prevVelocity = this.velocity.clone();
     }
     this.directionFlips = this.directionFlips.filter((t) => now - t < 1000);
     if (this.directionFlips.length >= 8) {
       this.reset();
       return null;
     }
-    if (this.bounceCooldown > 0) this.bounceCooldown--;
 
-    let bounced = false;
     let wallBounce = null;
 
     if (this.box.left() <= canvasBox.left()) {
       this.box.x = canvasBox.left() + 1;
-      this.dx *= -1;
-      bounced = true;
-      wallBounce = { x: 1, y: 0 };
+      this.velocity.x *= -1;
+      wallBounce = "x";
     } else if (this.box.right() >= canvasBox.right()) {
       this.box.x = canvasBox.right() - this.box.width - 1;
-      this.dx *= -1;
-      bounced = true;
-      wallBounce = { x: 1, y: 0 };
+      this.velocity.x *= -1;
+      wallBounce = "x";
     }
 
     if (this.box.top() <= canvasBox.top()) {
       this.box.y = canvasBox.top() + 1;
-      this.dy *= -1;
-      bounced = true;
-      wallBounce = { x: 0, y: 1 };
+      this.velocity.y *= -1;
+      wallBounce = "y";
     } else if (this.box.bottom() >= canvasBox.bottom()) {
       this.box.y = canvasBox.bottom() - this.box.height - 1;
-      this.dy *= -1;
-      bounced = true;
-      wallBounce = { x: 0, y: 1 };
+      this.velocity.y *= -1;
+      wallBounce = "y";
     }
 
-    // spawn on bounce if cooldowns allow
-    if (
-      bounced &&
-      this.bounceCooldown === 0 &&
-      now - this.lastWallBounceTime > WALL_BOUNCE_COOLDOWN_MS &&
-      now - this.lastSpawnTime >= GLOBAL_COOLDOWN_MS
-    ) {
-      this.bounceCooldown = PER_LOGO_BOUNCE_FRAMES;
-      this.lastWallBounceTime = now;
-      this.lastSpawnTime = now;
-      return wallBounce;
-    }
-
-    return null;
+    return wallBounce;
   }
 
   draw() {
-    const angle = Math.atan2(this.dy, this.dx);
+    const angle = Math.atan2(this.velocity.y, this.velocity.x);
     ctx.save();
+    let image = this.images.normal;
+    if (this.isInvincible) {
+      image = this.images.invincible;
+    }
     ctx.translate(this.box.centerX(), this.box.centerY());
     ctx.rotate(angle);
     ctx.drawImage(
-      this.image,
-      -this.image.width / 2,
-      -this.image.height / 2,
-      this.image.width,
-      this.image.height
+      image,
+      -image.width / 2,
+      -image.height / 2,
+      image.width,
+      image.height
     );
     ctx.restore();
   }
 }
 
-preloadImages(allSources, () => {
+preloadImages(allLogoNames, () => {
   logos.push(
     new Logo(
       canvasBox.width / 4,
       canvasBox.height / 3,
       SPEED,
       SPEED * 0.7,
-      loadedImages[baseLogoSrc]
+      loadedImages[baseLogoName]
     )
   );
   requestAnimationFrame(animate);
 });
 
-let globalLastSpawnTime = 0;
+let latestSpawnTime = 0;
 
 function animate(timestamp) {
   ctx.clearRect(0, 0, canvasBox.width, canvasBox.height);
@@ -249,95 +241,87 @@ function animate(timestamp) {
         if (minOverlapX < minOverlapY) {
           if (overlapTextLeft < overlapTextRight) {
             logo.box.x = textBox.left() - logo.box.width - 1;
-            logo.dx = -Math.abs(logo.dx);
+            logo.velocity.x = -Math.abs(logo.velocity.x);
           } else {
             logo.box.x = textBox.right() + 1;
-            logo.dx = Math.abs(logo.dx);
+            logo.velocity.x = Math.abs(logo.velocity.x);
           }
         } else {
           if (overlapTextTop < overlapTextBottom) {
             logo.box.y = textBox.top() - logo.box.height - 1;
-            logo.dy = -Math.abs(logo.dy);
+            logo.velocity.y = -Math.abs(logo.velocity.y);
           } else {
             logo.box.y = textBox.bottom() + 1;
-            logo.dy = Math.abs(logo.dy);
+            logo.velocity.y = Math.abs(logo.velocity.y);
           }
         }
       }
     }
 
     // ——— DRAW WITH POSSIBLE HUE FILTER ———
-    if (logo.isInvincible) {
-      const t = (timestamp - logo.invincibleStart) / 1000;
-      ctx.filter = `hue-rotate(${(t * 360) % 360}deg)`;
-    } else {
-      ctx.filter = "none";
-    }
     logo.draw();
-    ctx.filter = "none";
 
     // ——— LOGO–LOGO COLLISIONS & INVINCIBLE KILLS ———
     for (const other of logos) {
-      if (other === logo) continue;
-      if (timestamp - logo.spawnTime < 500 || timestamp - other.spawnTime < 500)
+      if (other === logo) {
         continue;
+      }
 
-      const dx = other.box.x - logo.box.x;
-      const dy = other.box.y - logo.box.y;
-      const dist = Math.hypot(dx, dy);
-      const minDist = (logo.box.width + other.box.width) / 2;
+      if (
+        timestamp - logo.spawnTime < 500 ||
+        timestamp - other.spawnTime < 500
+      ) {
+        continue;
+      }
+
+      const distanceX = other.box.x - logo.box.x;
+      const distanceY = other.box.y - logo.box.y;
+      const distance = Math.hypot(distanceX, distanceY);
 
       // invincible destroys
       if (
         logo.isInvincible &&
         !other.isInvincible &&
-        dist < minDist &&
-        dist > 0
+        distance < LOGO_SIZE &&
+        distance > 0
       ) {
         logos.splice(logos.indexOf(other), 1);
         continue;
       }
 
       // normal bounce
-      if (dist < minDist && dist > 0) {
-        const overlap = minDist - dist;
-        const nx = dx / dist;
-        const ny = dy / dist;
+      if (distance < LOGO_SIZE && distance > 0) {
+        const overlap = LOGO_SIZE - distance;
+        const nx = distanceX / distance;
+        const ny = distanceY / distance;
         logo.box.x -= (nx * overlap) / 2;
         logo.box.y -= (ny * overlap) / 2;
         other.box.x += (nx * overlap) / 2;
         other.box.y += (ny * overlap) / 2;
-        const dot = logo.dx * nx + logo.dy * ny;
-        logo.dx -= 2 * dot * nx;
-        logo.dy -= 2 * dot * ny;
+        const dot = logo.velocity.x * nx + logo.velocity.y * ny;
+        logo.velocity.x -= 2 * dot * nx;
+        logo.velocity.y -= 2 * dot * ny;
       }
+    }
+
+    // invincibility logic
+    if (wallBounce !== null && !logo.isInvincible && Math.random() < 0.1) {
+      logo.isInvincible = true;
+      logo.invincibleStart = timestamp;
+      setTimeout(() => (logo.isInvincible = false), INVINCIBLE_DURATION);
     }
 
     // ——— SPAWN NEW ON WALL BOUNCE ———
     if (
-      wallBounce &&
+      wallBounce !== null &&
       logos.length + newLogos.length < MAX_LOGOS &&
-      timestamp - globalLastSpawnTime >= GLOBAL_COOLDOWN_MS
+      timestamp - latestSpawnTime >= SPAWN_COOLDOWN_MS
     ) {
-      // invincibility logic
-      const invCount = logos.filter((l) => l.isInvincible).length;
-      const chance = Math.min(logos.length, 100) / 100;
-      if (
-        !logo.isInvincible &&
-        invCount < MAX_INVINCIBLE_COUNT &&
-        logos.length >= INVINCIBLE_MIN_LOGOS &&
-        Math.random() < chance
-      ) {
-        logo.isInvincible = true;
-        logo.invincibleStart = timestamp;
-        setTimeout(() => (logo.isInvincible = false), INVINCIBLE_DURATION);
-      }
-
-      globalLastSpawnTime = timestamp;
+      latestSpawnTime = timestamp;
 
       // compute spawn angle & pos
       let angle = Math.random() * (Math.PI - 0.4) + 0.2;
-      if (wallBounce.x === 1) {
+      if (wallBounce === "x") {
         if (logo.box.centerX() > canvasBox.centerX()) {
           angle += Math.PI;
         }
@@ -356,7 +340,7 @@ function animate(timestamp) {
       x = Math.max(0, Math.min(canvasBox.width - LOGO_SIZE, x));
       y = Math.max(0, Math.min(canvasBox.height - LOGO_SIZE, y));
 
-      newLogos.push(new Logo(x, y, dx, dy, getRandomImage()));
+      newLogos.push(new Logo(x, y, dx, dy, getRandomImages()));
     }
   }
 
