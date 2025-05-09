@@ -10,6 +10,7 @@ const SPAWN_OFFSET = 10; // px from wall when spawning
 const TEXT_BOX_WIDTH = 810; // px
 const TEXT_BOX_HEIGHT = 105; // px
 const MIN_FRAME_INTERVAL = 1000 / 40; // cap at FPS
+const MAKE_INVINCIBLE_CHANCE = 0.1;
 
 class Velocity {
   constructor(angle) {
@@ -281,6 +282,63 @@ preloadImages(allLogoNames, () => {
 let latestSpawnTime = 0;
 let latestAnimateTimestamp = 0;
 
+function spawnOnWallBounce(logo, wallBounce) {
+  let angle = Math.random() * (Math.PI - 0.4) + 0.2;
+  if (wallBounce === "x") {
+    if (logo.box.centerX() > canvasBox.centerX()) {
+      angle += Math.PI;
+    }
+  } else {
+    if (logo.box.centerY() < canvasBox.centerY()) {
+      angle += Math.PI / 2;
+    } else {
+      angle -= Math.PI / 2;
+    }
+  }
+  const velocity = new Velocity(angle);
+
+  let x = logo.box.x + velocity.x * SPAWN_OFFSET - LOGO_SIZE / 2;
+  let y = logo.box.y + velocity.y * SPAWN_OFFSET - LOGO_SIZE / 2;
+  x = Math.max(0, Math.min(canvasBox.width - LOGO_SIZE, x));
+  y = Math.max(0, Math.min(canvasBox.height - LOGO_SIZE, y));
+
+  return new Logo(x, y, velocity, getRandomImages());
+}
+
+function processLogoLogoCollision(now, logo, deletedLogos) {
+  for (const other of logos) {
+    if (other === logo) {
+      continue;
+    }
+
+    if (logo.isRecentlyCreated(now) || other.isRecentlyCreated(now)) {
+      continue;
+    }
+
+    const [distanceX, distanceY, distance] = other.distanceTo(logo);
+
+    if (logo.isInvincible && !other.isInvincible && distance < LOGO_SIZE) {
+      deletedLogos.push(other);
+      logo.addKill();
+      continue;
+    }
+
+    // normal bounce
+    if (distance < LOGO_SIZE && distance > 0) {
+      const overlap = LOGO_SIZE - distance;
+      const nx = distanceX / distance;
+      const ny = distanceY / distance;
+      logo.box.x -= (nx * overlap) / 2;
+      logo.box.y -= (ny * overlap) / 2;
+      other.box.x += (nx * overlap) / 2;
+      other.box.y += (ny * overlap) / 2;
+      const dot = logo.velocity.x * nx + logo.velocity.y * ny;
+      logo.velocity.x -= 2 * dot * nx;
+      logo.velocity.y -= 2 * dot * ny;
+    }
+  }
+}
+
 function animate(now) {
   if (now - latestAnimateTimestamp < MIN_FRAME_INTERVAL) {
     return requestAnimationFrame(animate);
@@ -295,72 +353,19 @@ function animate(now) {
   for (const logo of logos) {
     const wallBounce = logo.move(now, elapsedTime);
     logo.processTextBoxCollision();
+    processLogoLogoCollision(now, logo, deletedLogos);
 
-    // ——— LOGO–LOGO COLLISIONS & INVINCIBLE KILLS ———
-    for (const other of logos) {
-      if (other === logo) {
-        continue;
-      }
-
-      if (logo.isRecentlyCreated(now) || other.isRecentlyCreated(now)) {
-        continue;
-      }
-
-      const [distanceX, distanceY, distance] = other.distanceTo(logo);
-
-      if (logo.isInvincible && !other.isInvincible && distance < LOGO_SIZE) {
-        deletedLogos.push(other);
-        logo.addKill();
-        continue;
-      }
-
-      // normal bounce
-      if (distance < LOGO_SIZE && distance > 0) {
-        const overlap = LOGO_SIZE - distance;
-        const nx = distanceX / distance;
-        const ny = distanceY / distance;
-        logo.box.x -= (nx * overlap) / 2;
-        logo.box.y -= (ny * overlap) / 2;
-        other.box.x += (nx * overlap) / 2;
-        other.box.y += (ny * overlap) / 2;
-        const dot = logo.velocity.x * nx + logo.velocity.y * ny;
-        logo.velocity.x -= 2 * dot * nx;
-        logo.velocity.y -= 2 * dot * ny;
-      }
-    }
-
-    if (wallBounce !== null && Math.random() < 0.1) {
+    if (wallBounce !== null && Math.random() < MAKE_INVINCIBLE_CHANCE) {
       logo.makeInvincible();
     }
 
-    // ——— SPAWN NEW ON WALL BOUNCE ———
     if (
       wallBounce !== null &&
       logos.length + newLogos.length < MAX_LOGOS &&
       now - latestSpawnTime >= SPAWN_COOLDOWN_MS
     ) {
       latestSpawnTime = now;
-
-      let angle = Math.random() * (Math.PI - 0.4) + 0.2;
-      if (wallBounce === "x") {
-        if (logo.box.centerX() > canvasBox.centerX()) {
-          angle += Math.PI;
-        }
-      } else {
-        if (logo.box.centerY() < canvasBox.centerY()) {
-          angle += Math.PI / 2;
-        } else {
-          angle -= Math.PI / 2;
-        }
-      }
-      const velocity = new Velocity(angle);
-
-      let x = logo.box.x + velocity.x * SPAWN_OFFSET - LOGO_SIZE / 2;
-      let y = logo.box.y + velocity.y * SPAWN_OFFSET - LOGO_SIZE / 2;
-      x = Math.max(0, Math.min(canvasBox.width - LOGO_SIZE, x));
-      y = Math.max(0, Math.min(canvasBox.height - LOGO_SIZE, y));
-
-      newLogos.push(new Logo(x, y, velocity, getRandomImages()));
+      newLogos.push(spawnOnWallBounce(logo, wallBounce));
     }
   }
 
