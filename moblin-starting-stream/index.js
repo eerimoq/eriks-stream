@@ -1,7 +1,7 @@
 const CANVAS_WIDTH = 1920; // px
 const CANVAS_HEIGHT = 1080; // px
 const LOGO_SIZE = 100; // px
-const SPEED = 0.06; // px/ms
+const SPEED = 0.04; // px/ms
 const SPAWN_COOLDOWN_MS = 2000; // ms between spawns
 const MAX_LOGOS = 20; // max logos on screen
 const WALL_BOUNCE_COOLDOWN_MS = 100; // ms between a logo's wall bounces
