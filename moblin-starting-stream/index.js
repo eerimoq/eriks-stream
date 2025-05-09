@@ -9,7 +9,7 @@ const INVINCIBLE_DURATION = 20000; // ms invincible lasts
 const SPAWN_OFFSET = 10; // px from wall when spawning
 const TEXT_BOX_WIDTH = 810; // px
 const TEXT_BOX_HEIGHT = 105; // px
-const MIN_FRAME_INTERVAL = 1000/40; // cap at FPS
+const MIN_FRAME_INTERVAL = 1000 / 40; // cap at FPS
 
 class Velocity {
   constructor(angle) {
@@ -140,6 +140,11 @@ class Logo {
     this.spawnTime = performance.now();
     this.directionFlips = [];
     this.isInvincible = false;
+    this.scale = 1.0;
+  }
+
+  addKill() {
+    this.scale = Math.min(this.scale * 1.2, 5.0);
   }
 
   reset() {
@@ -227,25 +232,18 @@ class Logo {
   draw() {
     ctx.save();
     let image;
-    let scale;
+    let scale = this.scale;
     if (this.isInvincible) {
       image = this.images.invincible;
-      scale = 1.2;
+      scale *= 1.2;
     } else {
       image = this.images.normal;
-      scale = 1;
     }
     const width = image.width * scale;
     const height = image.height * scale;
     ctx.translate(this.box.centerX(), this.box.centerY());
     ctx.rotate(this.velocity.directionAngle());
-    ctx.drawImage(
-      image,
-      -width / 2,
-      -height / 2,
-      width,
-      height
-    );
+    ctx.drawImage(image, -width / 2, -height / 2, width, height);
     ctx.restore();
   }
 
@@ -281,24 +279,22 @@ preloadImages(allLogoNames, () => {
 });
 
 let latestSpawnTime = 0;
-let latestAnimateTimestamp       = 0;
+let latestAnimateTimestamp = 0;
 
 function animate(now) {
-    if (now - latestAnimateTimestamp < MIN_FRAME_INTERVAL) {
-      return requestAnimationFrame(animate);
-    }
+  if (now - latestAnimateTimestamp < MIN_FRAME_INTERVAL) {
+    return requestAnimationFrame(animate);
+  }
 
-    const elapsedTime = now - latestAnimateTimestamp;
-    latestAnimateTimestamp = now;
+  const elapsedTime = now - latestAnimateTimestamp;
+  latestAnimateTimestamp = now;
 
-  ctx.clearRect(0, 0, canvasBox.width, canvasBox.height);
   const deletedLogos = [];
   const newLogos = [];
 
   for (const logo of logos) {
     const wallBounce = logo.move(now, elapsedTime);
     logo.processTextBoxCollision();
-    logo.draw();
 
     // ——— LOGO–LOGO COLLISIONS & INVINCIBLE KILLS ———
     for (const other of logos) {
@@ -312,9 +308,9 @@ function animate(now) {
 
       const [distanceX, distanceY, distance] = other.distanceTo(logo);
 
-      // invincible destroys
       if (logo.isInvincible && !other.isInvincible && distance < LOGO_SIZE) {
         deletedLogos.push(other);
+        logo.addKill();
         continue;
       }
 
@@ -370,5 +366,11 @@ function animate(now) {
 
   logos = logos.filter((l) => deletedLogos.indexOf(l) === -1);
   logos.push(...newLogos);
+
+  ctx.clearRect(0, 0, canvasBox.width, canvasBox.height);
+  for (const logo of logos) {
+    logo.draw();
+  }
+
   requestAnimationFrame(animate);
 }
