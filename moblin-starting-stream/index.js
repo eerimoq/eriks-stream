@@ -366,6 +366,7 @@ function animate(now) {
 
   logos = logos.filter((l) => deletedLogos.indexOf(l) === -1);
   logos.push(...newLogos);
+  logos.sort((a, b) => b.scale - a.scale);
 
   ctx.clearRect(0, 0, canvasBox.width, canvasBox.height);
   for (const logo of logos) {
