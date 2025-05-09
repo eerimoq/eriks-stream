@@ -1,7 +1,7 @@
 const CANVAS_WIDTH = 1920; // px
 const CANVAS_HEIGHT = 1080; // px
 const LOGO_SIZE = 100; // px
-const SPEED = 1; // px/frame
+const SPEED = 0.06; // px/ms
 const SPAWN_COOLDOWN_MS = 2000; // ms between spawns
 const MAX_LOGOS = 20; // max logos on screen
 const WALL_BOUNCE_COOLDOWN_MS = 100; // ms between a logo's wall bounces
@@ -9,11 +9,12 @@ const INVINCIBLE_DURATION = 20000; // ms invincible lasts
 const SPAWN_OFFSET = 10; // px from wall when spawning
 const TEXT_BOX_WIDTH = 810; // px
 const TEXT_BOX_HEIGHT = 105; // px
+const MIN_FRAME_INTERVAL = 1000/40; // cap at FPS
 
 class Velocity {
-  constructor(x, y) {
-    this.x = x;
-    this.y = y;
+  constructor(angle) {
+    this.x = Math.cos(angle) * SPEED;
+    this.y = Math.sin(angle) * SPEED;
   }
 
   isSameDirection(other) {
@@ -23,8 +24,12 @@ class Velocity {
     );
   }
 
+  directionAngle() {
+    return Math.atan2(this.y, this.x);
+  }
+
   clone() {
-    return new Velocity(this.x, this.y);
+    return new Velocity(this.directionAngle());
   }
 }
 
@@ -68,6 +73,13 @@ class Box {
       this.bottom() > other.top()
     );
   }
+
+  distanceTo(other) {
+    const distanceX = other.x - this.x;
+    const distanceY = other.y - this.y;
+    const distance = Math.hypot(distanceX, distanceY);
+    return [distanceX, distanceY, distance];
+  }
 }
 
 const canvas = document.getElementById("canvas");
@@ -89,7 +101,7 @@ const variantLogoNames = [
 
 const allLogoNames = [baseLogoName, ...variantLogoNames];
 const loadedImages = {};
-const logos = [];
+let logos = [];
 const canvasBox = new Box(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 const textBox = new Box(
   (CANVAS_WIDTH - TEXT_BOX_WIDTH) / 2,
@@ -120,15 +132,14 @@ function getRandomImages() {
 }
 
 class Logo {
-  constructor(x, y, dx, dy, images) {
+  constructor(x, y, velocity, images) {
     this.box = new Box(x, y, LOGO_SIZE, LOGO_SIZE);
-    this.velocity = new Velocity(dx, dy);
-    this.prevVelocity = new Velocity(dx, dy);
+    this.velocity = velocity;
+    this.prevVelocity = velocity.clone();
     this.images = images;
     this.spawnTime = performance.now();
     this.directionFlips = [];
     this.isInvincible = false;
-    this.invincibleStart = 0;
   }
 
   reset() {
@@ -141,12 +152,11 @@ class Logo {
     this.spawnTime = performance.now();
   }
 
-  move(currentTime) {
-    this.box.x += this.velocity.x;
-    this.box.y += this.velocity.y;
+  move(now, elapsedTime) {
+    this.box.x += this.velocity.x * elapsedTime;
+    this.box.y += this.velocity.y * elapsedTime;
 
     // track rapid flips
-    const now = currentTime;
     if (!this.velocity.isSameDirection(this.prevVelocity)) {
       this.directionFlips.push(now);
       this.prevVelocity = this.velocity.clone();
@@ -182,23 +192,79 @@ class Logo {
     return wallBounce;
   }
 
+  processTextBoxCollision() {
+    if (this.isInvincible || !this.box.intersects(textBox)) {
+      return;
+    }
+
+    const overlapTextLeft = this.box.right() - textBox.left();
+    const overlapTextRight = textBox.right() - this.box.left();
+    const overlapTextTop = this.box.bottom() - textBox.top();
+    const overlapTextBottom = textBox.bottom() - this.box.top();
+
+    const minOverlapX = Math.min(overlapTextLeft, overlapTextRight);
+    const minOverlapY = Math.min(overlapTextTop, overlapTextBottom);
+
+    if (minOverlapX < minOverlapY) {
+      if (overlapTextLeft < overlapTextRight) {
+        this.box.x = textBox.left() - this.box.width - 1;
+        this.velocity.x = -Math.abs(this.velocity.x);
+      } else {
+        this.box.x = textBox.right() + 1;
+        this.velocity.x = Math.abs(this.velocity.x);
+      }
+    } else {
+      if (overlapTextTop < overlapTextBottom) {
+        this.box.y = textBox.top() - this.box.height - 1;
+        this.velocity.y = -Math.abs(this.velocity.y);
+      } else {
+        this.box.y = textBox.bottom() + 1;
+        this.velocity.y = Math.abs(this.velocity.y);
+      }
+    }
+  }
+
   draw() {
-    const angle = Math.atan2(this.velocity.y, this.velocity.x);
     ctx.save();
-    let image = this.images.normal;
+    let image;
+    let scale;
     if (this.isInvincible) {
       image = this.images.invincible;
+      scale = 1.2;
+    } else {
+      image = this.images.normal;
+      scale = 1;
     }
+    const width = image.width * scale;
+    const height = image.height * scale;
     ctx.translate(this.box.centerX(), this.box.centerY());
-    ctx.rotate(angle);
+    ctx.rotate(this.velocity.directionAngle());
     ctx.drawImage(
       image,
-      -image.width / 2,
-      -image.height / 2,
-      image.width,
-      image.height
+      -width / 2,
+      -height / 2,
+      width,
+      height
     );
     ctx.restore();
+  }
+
+  distanceTo(other) {
+    return other.box.distanceTo(this.box);
+  }
+
+  isRecentlyCreated(now) {
+    return now - this.spawnTime < 1500;
+  }
+
+  makeInvincible() {
+    if (this.isInvincible) {
+      return;
+    }
+    this.isInvincible = true;
+    setTimeout(() => {
+      this.isInvincible = false;
+    }, INVINCIBLE_DURATION);
   }
 }
 
@@ -207,8 +273,7 @@ preloadImages(allLogoNames, () => {
     new Logo(
       canvasBox.width / 4,
       canvasBox.height / 3,
-      SPEED,
-      SPEED * 0.7,
+      new Velocity(0.5),
       loadedImages[baseLogoName]
     )
   );
@@ -216,48 +281,23 @@ preloadImages(allLogoNames, () => {
 });
 
 let latestSpawnTime = 0;
+let latestAnimateTimestamp       = 0;
 
-function animate(timestamp) {
-  ctx.clearRect(0, 0, canvasBox.width, canvasBox.height);
-  const newLogos = [];
-
-  for (let i = logos.length - 1; i >= 0; i--) {
-    const logo = logos[i];
-    const wallBounce = logo.move(timestamp);
-
-    // ——— TEXT COLLISION FOR NORMAL LOGOS ———
-    if (!logo.isInvincible) {
-      if (textBox.intersects(logo.box)) {
-        // determine collision side
-        const overlapTextLeft = logo.box.right() - textBox.left();
-        const overlapTextRight = textBox.right() - logo.box.left();
-        const overlapTextTop = logo.box.bottom() - textBox.top();
-        const overlapTextBottom = textBox.bottom() - logo.box.top();
-
-        const minOverlapX = Math.min(overlapTextLeft, overlapTextRight);
-        const minOverlapY = Math.min(overlapTextTop, overlapTextBottom);
-
-        if (minOverlapX < minOverlapY) {
-          if (overlapTextLeft < overlapTextRight) {
-            logo.box.x = textBox.left() - logo.box.width - 1;
-            logo.velocity.x = -Math.abs(logo.velocity.x);
-          } else {
-            logo.box.x = textBox.right() + 1;
-            logo.velocity.x = Math.abs(logo.velocity.x);
-          }
-        } else {
-          if (overlapTextTop < overlapTextBottom) {
-            logo.box.y = textBox.top() - logo.box.height - 1;
-            logo.velocity.y = -Math.abs(logo.velocity.y);
-          } else {
-            logo.box.y = textBox.bottom() + 1;
-            logo.velocity.y = Math.abs(logo.velocity.y);
-          }
-        }
-      }
+function animate(now) {
+    if (now - latestAnimateTimestamp < MIN_FRAME_INTERVAL) {
+      return requestAnimationFrame(animate);
     }
 
-    // ——— DRAW WITH POSSIBLE HUE FILTER ———
+    const elapsedTime = now - latestAnimateTimestamp;
+    latestAnimateTimestamp = now;
+
+  ctx.clearRect(0, 0, canvasBox.width, canvasBox.height);
+  const deletedLogos = [];
+  const newLogos = [];
+
+  for (const logo of logos) {
+    const wallBounce = logo.move(now, elapsedTime);
+    logo.processTextBoxCollision();
     logo.draw();
 
     // ——— LOGO–LOGO COLLISIONS & INVINCIBLE KILLS ———
@@ -266,25 +306,15 @@ function animate(timestamp) {
         continue;
       }
 
-      if (
-        timestamp - logo.spawnTime < 500 ||
-        timestamp - other.spawnTime < 500
-      ) {
+      if (logo.isRecentlyCreated(now) || other.isRecentlyCreated(now)) {
         continue;
       }
 
-      const distanceX = other.box.x - logo.box.x;
-      const distanceY = other.box.y - logo.box.y;
-      const distance = Math.hypot(distanceX, distanceY);
+      const [distanceX, distanceY, distance] = other.distanceTo(logo);
 
       // invincible destroys
-      if (
-        logo.isInvincible &&
-        !other.isInvincible &&
-        distance < LOGO_SIZE &&
-        distance > 0
-      ) {
-        logos.splice(logos.indexOf(other), 1);
+      if (logo.isInvincible && !other.isInvincible && distance < LOGO_SIZE) {
+        deletedLogos.push(other);
         continue;
       }
 
@@ -303,22 +333,18 @@ function animate(timestamp) {
       }
     }
 
-    // invincibility logic
-    if (wallBounce !== null && !logo.isInvincible && Math.random() < 0.1) {
-      logo.isInvincible = true;
-      logo.invincibleStart = timestamp;
-      setTimeout(() => (logo.isInvincible = false), INVINCIBLE_DURATION);
+    if (wallBounce !== null && Math.random() < 0.1) {
+      logo.makeInvincible();
     }
 
     // ——— SPAWN NEW ON WALL BOUNCE ———
     if (
       wallBounce !== null &&
       logos.length + newLogos.length < MAX_LOGOS &&
-      timestamp - latestSpawnTime >= SPAWN_COOLDOWN_MS
+      now - latestSpawnTime >= SPAWN_COOLDOWN_MS
     ) {
-      latestSpawnTime = timestamp;
+      latestSpawnTime = now;
 
-      // compute spawn angle & pos
       let angle = Math.random() * (Math.PI - 0.4) + 0.2;
       if (wallBounce === "x") {
         if (logo.box.centerX() > canvasBox.centerX()) {
@@ -331,18 +357,18 @@ function animate(timestamp) {
           angle -= Math.PI / 2;
         }
       }
-      const dx = Math.cos(angle) * SPEED;
-      const dy = Math.sin(angle) * SPEED;
+      const velocity = new Velocity(angle);
 
-      let x = logo.box.x + dx * SPAWN_OFFSET - LOGO_SIZE / 2;
-      let y = logo.box.y + dy * SPAWN_OFFSET - LOGO_SIZE / 2;
+      let x = logo.box.x + velocity.x * SPAWN_OFFSET - LOGO_SIZE / 2;
+      let y = logo.box.y + velocity.y * SPAWN_OFFSET - LOGO_SIZE / 2;
       x = Math.max(0, Math.min(canvasBox.width - LOGO_SIZE, x));
       y = Math.max(0, Math.min(canvasBox.height - LOGO_SIZE, y));
 
-      newLogos.push(new Logo(x, y, dx, dy, getRandomImages()));
+      newLogos.push(new Logo(x, y, velocity, getRandomImages()));
     }
   }
 
+  logos = logos.filter((l) => deletedLogos.indexOf(l) === -1);
   logos.push(...newLogos);
   requestAnimationFrame(animate);
 }
