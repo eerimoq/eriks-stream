@@ -111,7 +111,7 @@ const textBox = new Box(
   TEXT_BOX_HEIGHT
 );
 
-function preloadImages(names, callback) {
+function preloadImages(names, onLoaded) {
   let loaded = 0;
   for (const name of names) {
     const image = new Image();
@@ -121,7 +121,9 @@ function preloadImages(names, callback) {
       invincibleImage.src = `logos/${name}-invincible.svg`;
       invincibleImage.onload = () => {
         loadedImages[name] = { normal: image, invincible: invincibleImage };
-        if (++loaded === names.length) callback();
+        if (++loaded === names.length) {
+          onLoaded();
+        }
       };
     };
   }
@@ -166,11 +168,11 @@ class Logo {
     if (!this.velocity.isSameDirection(this.prevVelocity)) {
       this.directionFlips.push(now);
       this.prevVelocity = this.velocity.clone();
-    }
-    this.directionFlips = this.directionFlips.filter((t) => now - t < 1000);
-    if (this.directionFlips.length >= 8) {
-      this.reset();
-      return null;
+      this.directionFlips = this.directionFlips.filter((t) => now - t < 1000);
+      if (this.directionFlips.length >= 8) {
+        this.reset();
+        return null;
+      }
     }
 
     let wallBounce = null;
@@ -194,6 +196,8 @@ class Logo {
       this.velocity.y *= -1;
       wallBounce = "y";
     }
+
+    this.processTextBoxCollision();
 
     return wallBounce;
   }
@@ -282,30 +286,26 @@ preloadImages(allLogoNames, () => {
 let latestSpawnTime = 0;
 let latestAnimateTimestamp = 0;
 
-function spawnOnWallBounce(logo, wallBounce) {
-  let angle = Math.random() * (Math.PI - 0.4) + 0.2;
-  if (wallBounce === "x") {
-    if (logo.box.centerX() > canvasBox.centerX()) {
-      angle += Math.PI;
+function processLogoKills(now, logo, killedLogos) {
+  for (const other of logos) {
+    if (other === logo) {
+      continue;
     }
-  } else {
-    if (logo.box.centerY() < canvasBox.centerY()) {
-      angle += Math.PI / 2;
-    } else {
-      angle -= Math.PI / 2;
+
+    if (logo.isRecentlyCreated(now) || other.isRecentlyCreated(now)) {
+      continue;
+    }
+
+    const distance = other.distanceTo(logo)[2];
+
+    if (logo.isInvincible && !other.isInvincible && distance < LOGO_SIZE) {
+        killedLogos.push(other);
+        logo.addKill();
     }
   }
-  const velocity = new Velocity(angle);
-
-  let x = logo.box.x + velocity.x * SPAWN_OFFSET - LOGO_SIZE / 2;
-  let y = logo.box.y + velocity.y * SPAWN_OFFSET - LOGO_SIZE / 2;
-  x = Math.max(0, Math.min(canvasBox.width - LOGO_SIZE, x));
-  y = Math.max(0, Math.min(canvasBox.height - LOGO_SIZE, y));
-
-  return new Logo(x, y, velocity, getRandomImages());
 }
 
-function processLogoLogoCollision(now, logo, deletedLogos) {
+function processLogoLogoBounce(now, logo) {
   for (const other of logos) {
     if (other === logo) {
       continue;
@@ -317,13 +317,6 @@ function processLogoLogoCollision(now, logo, deletedLogos) {
 
     const [distanceX, distanceY, distance] = other.distanceTo(logo);
 
-    if (logo.isInvincible && !other.isInvincible && distance < LOGO_SIZE) {
-      deletedLogos.push(other);
-      logo.addKill();
-      continue;
-    }
-
-    // normal bounce
     if (distance < LOGO_SIZE && distance > 0) {
       const overlap = LOGO_SIZE - distance;
       const nx = distanceX / distance;
@@ -339,44 +332,75 @@ function processLogoLogoCollision(now, logo, deletedLogos) {
   }
 }
 
-function animate(now) {
-  if (now - latestAnimateTimestamp < MIN_FRAME_INTERVAL) {
-    return requestAnimationFrame(animate);
+function processMakeLogoInvincible(logo, wallBounce) {
+  if (wallBounce !== null && Math.random() < MAKE_INVINCIBLE_CHANCE) {
+    logo.makeInvincible();
   }
+}
 
-  const elapsedTime = now - latestAnimateTimestamp;
-  latestAnimateTimestamp = now;
+function processSpawnAtWallBounce(logo, wallBounce, now, newLogos) {
+  if (
+    wallBounce !== null &&
+    logos.length + newLogos.length < MAX_LOGOS &&
+    now - latestSpawnTime >= SPAWN_COOLDOWN_MS
+  ) {
+    latestSpawnTime = now;
 
-  const deletedLogos = [];
-  const newLogos = [];
-
-  for (const logo of logos) {
-    const wallBounce = logo.move(now, elapsedTime);
-    logo.processTextBoxCollision();
-    processLogoLogoCollision(now, logo, deletedLogos);
-
-    if (wallBounce !== null && Math.random() < MAKE_INVINCIBLE_CHANCE) {
-      logo.makeInvincible();
+    let angle = Math.random() * (Math.PI - 0.4) + 0.2;
+    if (wallBounce === "x") {
+      if (logo.box.centerX() > canvasBox.centerX()) {
+        angle += Math.PI;
+      }
+    } else {
+      if (logo.box.centerY() < canvasBox.centerY()) {
+        angle += Math.PI / 2;
+      } else {
+        angle -= Math.PI / 2;
+      }
     }
+    const velocity = new Velocity(angle);
 
-    if (
-      wallBounce !== null &&
-      logos.length + newLogos.length < MAX_LOGOS &&
-      now - latestSpawnTime >= SPAWN_COOLDOWN_MS
-    ) {
-      latestSpawnTime = now;
-      newLogos.push(spawnOnWallBounce(logo, wallBounce));
-    }
+    let x = logo.box.x + velocity.x * SPAWN_OFFSET - LOGO_SIZE / 2;
+    let y = logo.box.y + velocity.y * SPAWN_OFFSET - LOGO_SIZE / 2;
+    x = Math.max(0, Math.min(canvasBox.width - LOGO_SIZE, x));
+    y = Math.max(0, Math.min(canvasBox.height - LOGO_SIZE, y));
+
+    newLogos.push(new Logo(x, y, velocity, getRandomImages()));
   }
+}
 
-  logos = logos.filter((l) => deletedLogos.indexOf(l) === -1);
+function updateLogosList(newLogos, killedLogos) {
+  logos = logos.filter((logo) => killedLogos.indexOf(logo) === -1);
   logos.push(...newLogos);
-  logos.sort((a, b) => b.scale - a.scale);
+  logos.sort((first, second) => second.scale - first.scale);
+}
 
+function draw() {
   ctx.clearRect(0, 0, canvasBox.width, canvasBox.height);
   for (const logo of logos) {
     logo.draw();
   }
+}
 
+function animate(now) {
+  const elapsedTime = now - latestAnimateTimestamp;
+  if (elapsedTime >= MIN_FRAME_INTERVAL) {
+    latestAnimateTimestamp = now;
+    const newLogos = [];
+    const killedLogos = [];
+    for (const logo of logos) {
+        const wallBounce = logo.move(now, elapsedTime);
+        processMakeLogoInvincible(logo, wallBounce);
+        processSpawnAtWallBounce(logo, wallBounce, now, newLogos);
+    }
+    for (const logo of logos) {
+        processLogoKills(now, logo, killedLogos);
+    }
+    updateLogosList(newLogos, killedLogos);
+    for (const logo of logos) {
+        processLogoLogoBounce(now, logo);
+    }
+    draw();
+  }
   requestAnimationFrame(animate);
 }
