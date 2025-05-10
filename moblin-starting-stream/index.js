@@ -299,35 +299,46 @@ function processLogoKills(now, logo, killedLogos) {
     const distance = other.distanceTo(logo)[2];
 
     if (logo.isInvincible && !other.isInvincible && distance < LOGO_SIZE) {
-        killedLogos.push(other);
-        logo.addKill();
+      killedLogos.push(other);
+      logo.addKill();
     }
   }
 }
 
-function processLogoLogoBounce(now, logo) {
-  for (const other of logos) {
-    if (other === logo) {
-      continue;
-    }
+function processLogoLogoBounces(now, logo) {
+  let pairsThatBounced = new Set();
+  for (const logo of logos) {
+    for (const other of logos) {
+      if (other === logo) {
+        continue;
+      }
 
-    if (logo.isRecentlyCreated(now) || other.isRecentlyCreated(now)) {
-      continue;
-    }
+      if (logo.isRecentlyCreated(now) || other.isRecentlyCreated(now)) {
+        continue;
+      }
 
-    const [distanceX, distanceY, distance] = other.distanceTo(logo);
+      if (pairsThatBounced.has([other, logo]) || pairsThatBounced.has([logo, other])) {
+        continue;
+      }
 
-    if (distance < LOGO_SIZE && distance > 0) {
-      const overlap = LOGO_SIZE - distance;
-      const nx = distanceX / distance;
-      const ny = distanceY / distance;
-      logo.box.x -= (nx * overlap) / 2;
-      logo.box.y -= (ny * overlap) / 2;
-      other.box.x += (nx * overlap) / 2;
-      other.box.y += (ny * overlap) / 2;
-      const dot = logo.velocity.x * nx + logo.velocity.y * ny;
-      logo.velocity.x -= 2 * dot * nx;
-      logo.velocity.y -= 2 * dot * ny;
+      const [distanceX, distanceY, distance] = other.distanceTo(logo);
+
+      if (distance < LOGO_SIZE && distance > 0) {
+        const overlap = LOGO_SIZE - distance;
+        const nx = distanceX / distance;
+        const ny = distanceY / distance;
+        logo.box.x -= (nx * overlap) / 2;
+        logo.box.y -= (ny * overlap) / 2;
+        other.box.x += (nx * overlap) / 2;
+        other.box.y += (ny * overlap) / 2;
+        let dot = logo.velocity.x * nx + logo.velocity.y * ny;
+        logo.velocity.x -= 2 * dot * nx;
+        logo.velocity.y -= 2 * dot * ny;
+        dot = other.velocity.x * nx + other.velocity.y * ny;
+        other.velocity.x -= 2 * dot * nx;
+        other.velocity.y -= 2 * dot * ny;
+        pairsThatBounced.add([logo, other]);
+      }
     }
   }
 }
@@ -389,17 +400,15 @@ function animate(now) {
     const newLogos = [];
     const killedLogos = [];
     for (const logo of logos) {
-        const wallBounce = logo.move(now, elapsedTime);
-        processMakeLogoInvincible(logo, wallBounce);
-        processSpawnAtWallBounce(logo, wallBounce, now, newLogos);
+      const wallBounce = logo.move(now, elapsedTime);
+      processMakeLogoInvincible(logo, wallBounce);
+      processSpawnAtWallBounce(logo, wallBounce, now, newLogos);
     }
     for (const logo of logos) {
-        processLogoKills(now, logo, killedLogos);
+      processLogoKills(now, logo, killedLogos);
     }
     updateLogosList(newLogos, killedLogos);
-    for (const logo of logos) {
-        processLogoLogoBounce(now, logo);
-    }
+    processLogoLogoBounces(now);
     draw();
   }
   requestAnimationFrame(animate);
