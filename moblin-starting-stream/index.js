@@ -135,11 +135,12 @@ function getRandomImages() {
 }
 
 class Logo {
-  constructor(x, y, velocity, images) {
+  constructor(x, y, velocity, images, name) {
     this.box = new Box(x, y, LOGO_SIZE, LOGO_SIZE);
     this.velocity = velocity;
     this.prevVelocity = velocity.clone();
     this.images = images;
+    this.name = name;
     this.spawnTime = performance.now();
     this.directionFlips = [];
     this.isInvincible = false;
@@ -249,6 +250,12 @@ class Logo {
     ctx.translate(this.box.centerX(), this.box.centerY());
     ctx.rotate(this.velocity.directionAngle());
     ctx.drawImage(image, -width / 2, -height / 2, width, height);
+    if (this.name !== undefined) {
+      ctx.font = "24px serif";
+      ctx.fillStyle = "white";
+      ctx.textAlign = "center";
+      ctx.fillText(this.name, 0, height / 2);
+    }
     ctx.restore();
   }
 
@@ -277,7 +284,8 @@ preloadImages(allLogoNames, () => {
       canvasBox.width / 4,
       canvasBox.height / 3,
       new Velocity(0.5),
-      loadedImages[baseLogoName]
+      loadedImages[baseLogoName],
+      undefined
     )
   );
   requestAnimationFrame(animate);
@@ -317,7 +325,10 @@ function processLogoLogoBounces(now, logo) {
         continue;
       }
 
-      if (pairsThatBounced.has([other, logo]) || pairsThatBounced.has([logo, other])) {
+      if (
+        pairsThatBounced.has([other, logo]) ||
+        pairsThatBounced.has([logo, other])
+      ) {
         continue;
       }
 
@@ -376,7 +387,7 @@ function processSpawnAtWallBounce(logo, wallBounce, now, newLogos) {
     x = Math.max(0, Math.min(canvasBox.width - LOGO_SIZE, x));
     y = Math.max(0, Math.min(canvasBox.height - LOGO_SIZE, y));
 
-    newLogos.push(new Logo(x, y, velocity, getRandomImages()));
+    newLogos.push(new Logo(x, y, velocity, getRandomImages(), getLogoName()));
   }
 }
 
@@ -411,5 +422,34 @@ function animate(now) {
     processLogoLogoBounces(now);
     draw();
   }
+
   requestAnimationFrame(animate);
 }
+
+let stop = false;
+const userWaitList = [];
+
+function getLogoName() {
+  while (true) {
+    const user = userWaitList.shift();
+    if (user === undefined) {
+      return undefined;
+    }
+    if (logos.find((logo) => logo.name === user) === undefined) {
+      return user;
+    }
+  }
+}
+
+try {
+  moblin.subscribe({ chat: { prefix: "!" } });
+  moblin.onmessage = (message) => {
+    moblin.send({ aaff: message });
+    if (message.data.chat !== undefined) {
+      const chat = message.data.chat;
+      if (chat.message.text === "!join") {
+        userWaitList.push(chat.message.user);
+      }
+    }
+  };
+} catch {}
