@@ -158,7 +158,6 @@ class Logo {
     this.velocity.x = Math.cos(angle) * SPEED;
     this.velocity.y = Math.sin(angle) * SPEED;
     this.directionFlips = [];
-    this.spawnTime = performance.now();
   }
 
   move(now, elapsedTime) {
@@ -250,11 +249,12 @@ class Logo {
     ctx.translate(this.box.centerX(), this.box.centerY());
     ctx.rotate(this.velocity.directionAngle());
     ctx.drawImage(image, -width / 2, -height / 2, width, height);
-    if (this.name !== undefined) {
-      ctx.font = "32px serif";
-      ctx.fillStyle = "white";
+    if (this.name?.user !== undefined) {
+      ctx.font = "bold 32px serif";
+      const color = this.name.userColor;
+      ctx.fillStyle = `rgb(${color.red}, ${color.green}, ${color.blue})`;
       ctx.textAlign = "center";
-      ctx.fillText(this.name, 0, height / 2);
+      ctx.fillText(this.name.user, 0, height / 2);
     }
     ctx.restore();
   }
@@ -387,7 +387,9 @@ function processSpawnAtWallBounce(logo, wallBounce, now, newLogos) {
     x = Math.max(0, Math.min(canvasBox.width - LOGO_SIZE, x));
     y = Math.max(0, Math.min(canvasBox.height - LOGO_SIZE, y));
 
-    newLogos.push(new Logo(x, y, velocity, getRandomImages(), getLogoName()));
+    newLogos.push(
+      new Logo(x, y, velocity, getRandomImages(), getLogoMessage())
+    );
   }
 }
 
@@ -427,29 +429,52 @@ function animate(now) {
 }
 
 let stop = false;
-const userWaitList = [];
+const logoNameWaitList = [];
 
-function getLogoName() {
+function getLogoMessage() {
   while (true) {
-    const user = userWaitList.shift();
-    if (user === undefined) {
+    const message = logoNameWaitList.shift();
+    if (message === undefined) {
       return undefined;
     }
-    if (logos.find((logo) => logo.name === user) === undefined) {
-      return user;
+    if (
+      logos.find((logo) => logo.message?.user === message.user) === undefined
+    ) {
+      return message;
     }
+  }
+}
+
+function nameLogo(message) {
+  const logo = logos.find((logo) => logo.name === undefined);
+  if (logo === undefined) {
+    logoNameWaitList.push(message);
+  } else {
+    logo.name = message;
+  }
+}
+
+function teleportLogo(user) {
+  const logo = logos.find((logo) => logo.name === user);
+  if (logo !== undefined) {
+    logo.reset();
+  }
+}
+
+function handleChatMessage(message) {
+  const command = message.segments[0]?.text?.trim();
+  if (command === "!join") {
+    nameLogo(message);
+  } else if (command === "!teleport") {
+    teleportLogo(message.user);
   }
 }
 
 try {
   moblin.subscribe({ chat: { prefix: "!" } });
   moblin.onmessage = (message) => {
-    moblin.send({ aaff: message });
     if (message.data.chat !== undefined) {
-      const chat = message.data.chat;
-      if (chat.message.text === "!join") {
-        userWaitList.push(chat.message.user);
-      }
+      handleChatMessage(message.data.chat.message);
     }
   };
 } catch {}
