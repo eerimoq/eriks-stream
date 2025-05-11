@@ -249,12 +249,12 @@ class Logo {
     ctx.translate(this.box.centerX(), this.box.centerY());
     ctx.rotate(this.velocity.directionAngle());
     ctx.drawImage(image, -width / 2, -height / 2, width, height);
-    if (this.name?.user !== undefined) {
+    if (this.name !== undefined) {
       const fontSize = Math.round(32 * scale);
       ctx.font = `${fontSize}px serif`;
       ctx.fillStyle = "white";
       ctx.textAlign = "center";
-      ctx.fillText(this.name.user, 0, height / 2);
+      ctx.fillText(this.name, 0, height / 2);
     }
     ctx.restore();
   }
@@ -387,9 +387,7 @@ function processSpawnAtWallBounce(logo, wallBounce, now, newLogos) {
     x = Math.max(0, Math.min(canvasBox.width - LOGO_SIZE, x));
     y = Math.max(0, Math.min(canvasBox.height - LOGO_SIZE, y));
 
-    newLogos.push(
-      new Logo(x, y, velocity, getRandomImages(), getLogoMessage())
-    );
+    newLogos.push(new Logo(x, y, velocity, getRandomImages(), getLogoName()));
   }
 }
 
@@ -431,31 +429,32 @@ function animate(now) {
 let stop = false;
 const logoNameWaitList = [];
 
-function getLogoMessage() {
+function getLogoName() {
   while (true) {
-    const message = logoNameWaitList.shift();
-    if (message === undefined) {
+    const name = logoNameWaitList.shift();
+    if (name === undefined) {
       return undefined;
     }
-    if (
-      logos.find((logo) => logo.message?.user === message.user) === undefined
-    ) {
-      return message;
+    if (logos.find((logo) => logo.name === name) === undefined) {
+      return name;
     }
   }
 }
 
-function nameLogo(message) {
+function nameLogo(user) {
+  if (logos.find((logo) => logo.name === user) !== undefined) {
+    return;
+  }
   const logo = logos.find((logo) => logo.name === undefined);
   if (logo === undefined) {
-    logoNameWaitList.push(message);
+    logoNameWaitList.push(user);
   } else {
-    logo.name = message;
+    logo.name = user;
   }
 }
 
 function teleportLogo(user) {
-  const logo = logos.find((logo) => logo.name?.user === user);
+  const logo = logos.find((logo) => logo.name === user);
   if (logo !== undefined) {
     logo.reset();
   }
@@ -464,7 +463,7 @@ function teleportLogo(user) {
 function handleChatMessage(message) {
   const command = message.segments[0]?.text?.trim();
   if (command === "!join") {
-    nameLogo(message);
+    nameLogo(message.user);
   } else if (command === "!teleport") {
     teleportLogo(message.user);
   }
