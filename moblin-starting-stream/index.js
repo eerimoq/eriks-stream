@@ -250,9 +250,9 @@ class Logo {
     ctx.rotate(this.velocity.directionAngle());
     ctx.drawImage(image, -width / 2, -height / 2, width, height);
     if (this.name?.user !== undefined) {
-      ctx.font = "bold 32px serif";
-      const color = this.name.userColor;
-      ctx.fillStyle = `rgb(${color.red}, ${color.green}, ${color.blue})`;
+      const fontSize = Math.round(32 * scale);
+      ctx.font = `${fontSize}px serif`;
+      ctx.fillStyle = "white";
       ctx.textAlign = "center";
       ctx.fillText(this.name.user, 0, height / 2);
     }
@@ -455,7 +455,7 @@ function nameLogo(message) {
 }
 
 function teleportLogo(user) {
-  const logo = logos.find((logo) => logo.name === user);
+  const logo = logos.find((logo) => logo.name?.user === user);
   if (logo !== undefined) {
     logo.reset();
   }
