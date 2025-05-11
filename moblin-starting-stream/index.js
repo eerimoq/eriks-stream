@@ -472,8 +472,8 @@ function handleChatMessage(message) {
 try {
   moblin.subscribe({ chat: { prefix: "!" } });
   moblin.onmessage = (message) => {
-    if (message.data.chat !== undefined) {
-      handleChatMessage(message.data.chat.message);
+    if (message.chat !== undefined) {
+      handleChatMessage(message.chat.message);
     }
   };
 } catch {}
