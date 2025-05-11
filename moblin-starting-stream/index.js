@@ -251,7 +251,7 @@ class Logo {
     ctx.rotate(this.velocity.directionAngle());
     ctx.drawImage(image, -width / 2, -height / 2, width, height);
     if (this.name !== undefined) {
-      ctx.font = "24px serif";
+      ctx.font = "32px serif";
       ctx.fillStyle = "white";
       ctx.textAlign = "center";
       ctx.fillText(this.name, 0, height / 2);
